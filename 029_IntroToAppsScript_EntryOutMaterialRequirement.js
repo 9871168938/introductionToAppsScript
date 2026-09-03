@@ -14,9 +14,9 @@ const CONFIG = {
   SS_TARGET_ID: "1lUyVOjGMK1UbISFgKhsuKwRyUoNKvaIrKfqpdSF6-Ps", // Target Material Requirements Spreadsheet
   SS_BOM_ID: "1rCqlpgWnz9_PvtbH2faN0Y0IOddYLa6dwtwlF49Vek0",    // Master BOM Spreadsheet
 
-  SHEET_ENTRY_OUT: "ENTRY OUT_",             // Source Sheet Name
-  SHEET_MATERIAL_REQUEST: "MATERIAL REQUEST", // Source Ad-Hoc Material Request Sheet Name
-  SHEET_REQ: "MATERIAL REQUIRMENTS",         // Target Requirements Sheet Name
+  SHEET_ENTRY_OUT: "ENTRY OUT_",             // Source Sheet Name (lives in SS1_ID)
+  SHEET_MATERIAL_REQUEST: "MATERIAL REQUEST", // Source Ad-Hoc Material Request Sheet Name (lives in SS_TARGET_ID)
+  SHEET_REQ: "MATERIAL REQUIRMENTS",         // Target Requirements Sheet Name (lives in SS_TARGET_ID)
   SHEET_BOM: "NEW BOM",                      // Source Master BOM Sheet Name
 
   LOCK_TIMEOUT_MS: 30000,                    // 30 Seconds Execution Lock Safety
@@ -375,11 +375,11 @@ function processMaterialRequestAutomation() {
   try {
     if (!lock.tryLock(CONFIG.LOCK_TIMEOUT_MS)) return;
 
-    var ss1 = SpreadsheetApp.openById(CONFIG.SS1_ID);
+    // MATERIAL REQUEST lives in the same spreadsheet as MATERIAL REQUIRMENTS (SS_TARGET_ID)
     var ssTarget = SpreadsheetApp.openById(CONFIG.SS_TARGET_ID);
     var ssBom = SpreadsheetApp.openById(CONFIG.SS_BOM_ID);
 
-    var sheetMaterialRequest = ss1.getSheetByName(CONFIG.SHEET_MATERIAL_REQUEST);
+    var sheetMaterialRequest = ssTarget.getSheetByName(CONFIG.SHEET_MATERIAL_REQUEST);
     var sheetReq = ssTarget.getSheetByName(CONFIG.SHEET_REQ);
     var sheetBom = ssBom.getSheetByName(CONFIG.SHEET_BOM);
 
