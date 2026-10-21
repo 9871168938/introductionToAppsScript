@@ -1,0 +1,19 @@
+# Evergreen Purchase ERP — BigQuery Stock Engine
+# Python 3.11+
+
+# BigQuery client + Storage API (fast bulk reads)
+google-cloud-bigquery==3.25.0
+google-cloud-bigquery-storage==2.26.0
+pyarrow==17.0.0               # required by BQ storage API for fast Arrow reads
+
+# Google Sheets API (for the optional sync step)
+google-api-python-client==2.139.0
+google-auth==2.34.0
+google-auth-httplib2==0.2.0
+
+# Retry / resilience
+tenacity==9.0.0
+
+# Runtime (production deployment)
+functions-framework==3.8.1    # Cloud Functions entry point
+gunicorn==23.0.0              # Cloud Run HTTP server
