@@ -1,132 +1,87 @@
 """
-Entry point for the Evergreen Purchase ERP — BigQuery Stock Engine.
+Evergreen Purchase ERP — Stock API entry point.
 
-Can be run three ways:
+Deployment options
+------------------
+1. Cloud Run (recommended):
+       uvicorn stock_engine.main:app --host 0.0.0.0 --port 8080 --workers 4
 
-1. Direct execution (local / Cloud Run job):
-       python -m stock_engine.main
+2. Cloud Functions HTTP trigger (set FUNCTION_TARGET=http_handler):
+       export FUNCTION_TARGET=http_handler
 
-2. Cloud Functions HTTP trigger (set as function_target in cloudbuild.yaml):
-       export FUNCTION_TARGET=run_stock_engine
-
-3. Apps Script UrlFetchApp trigger (calls the Cloud Run job URL).
+3. Local dev:
+       uvicorn stock_engine.main:app --reload
 
 Environment variables
 ---------------------
-BQ_PROJECT_ID          BigQuery project (default: productionreport-467412)
-BQ_DATASET_ID          BigQuery dataset (default: PurchaseERP)
-BQ_LOCATION            BigQuery region   (default: asia-south1)
-SHEETS_STOCK_LEDGER_ID Google Sheets ID for ERP_TXN (stock_ledger tab)
-SHEETS_MASTER_ID       Google Sheets ID for ERP_MASTER (INVENTORY STOCK tab)
-FORCE_FULL_CALC        Set to "true" to skip incremental and do a full recalc
-SYNC_SHEETS            Set to "true" to sync Sheets → BQ before calculating
-QUERY_TIMEOUT_SECS     BigQuery query timeout in seconds (default: 300)
+BQ_PROJECT_ID     BigQuery project (default: productionreport-467412)
+BQ_DATASET_ID     BigQuery dataset (default: PurchaseERP)
+BQ_LOCATION       BigQuery region   (default: asia-south1)
 
-Performance notes
------------------
-- At 10 lakh rows, the incremental path takes ~2–5 seconds in BigQuery
-  (partition pruning + cluster filtering limits the scan to today's slice).
-- The full-recalc path scans the entire stock_ledger; with partitioning
-  and 200 GB max-bytes-billed the cost stays predictable.
-- The sync step (Sheets → BQ) is the bottleneck at large volumes;
-  run it separately on a longer interval and run the calc every 5 min.
+Architecture
+------------
+- Apps Script (or any HTTP client) calls this API to write stock movements
+- API streams rows directly into ERP_TXN_stock_ledger in BigQuery
+- ERP_StockCalc materialized view auto-refreshes every 5 minutes
+- GET /api/v1/stock always returns up-to-date stock; no trigger needed
 """
 import logging
 import os
 import sys
-import time
-from datetime import timezone
+
+from contextlib import asynccontextmanager
 
 from google.cloud import bigquery
 
 from . import config
-from .calculator import StockCalculator
+from .api import app
 from .setup_tables import setup_all
+
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)-8s %(name)s — %(message)s",
+    datefmt="%Y-%m-%dT%H:%M:%S",
+    stream=sys.stdout,
+)
 
 log = logging.getLogger(__name__)
 
 
-def _configure_logging() -> None:
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)-8s %(name)s — %(message)s",
-        datefmt="%Y-%m-%dT%H:%M:%S",
-        stream=sys.stdout,
-    )
-
-
-def _build_client() -> bigquery.Client:
-    return bigquery.Client(
+@app.on_event("startup")
+def on_startup() -> None:
+    client = bigquery.Client(
         project=config.PROJECT_ID,
         location=config.BQ_LOCATION,
     )
-
-
-# ── Cloud Function HTTP handler ───────────────────────────────────────────
-
-def run_stock_engine(request=None):
-    """
-    Cloud Functions HTTP trigger entry point.
-    Also callable directly (request can be None for non-HTTP invocations).
-    """
-    _configure_logging()
-    start = time.monotonic()
-
-    force_full = os.getenv("FORCE_FULL_CALC", "false").lower() == "true"
-    do_sync    = os.getenv("SYNC_SHEETS",     "false").lower() == "true"
-
-    client = _build_client()
-
-    # Ensure tables / view exist (idempotent)
     setup_all(client)
-
-    # Optional: sync Google Sheets → BigQuery before calculating
-    if do_sync:
-        _sync_sheets(client)
-
-    # Run stock calculation
-    calc   = StockCalculator(client)
-    rows   = calc.run(force_full=force_full)
-    elapsed = time.monotonic() - start
-
-    log.info(
-        "Stock engine finished: %d rows updated in %.1fs", rows, elapsed
-    )
-
-    # Return JSON for Cloud Functions / Cloud Run
-    return {
-        "status":   "ok",
-        "rows":     rows,
-        "elapsed_s": round(elapsed, 2),
-        "force_full": force_full,
-    }
+    log.info("Stock API ready — BigQuery project: %s / dataset: %s",
+             config.PROJECT_ID, config.DATASET_ID)
 
 
-def _sync_sheets(client: bigquery.Client) -> None:
-    """Sync stock_ledger and inventory_stock from Google Sheets."""
-    from .sync import sync_stock_ledger, sync_inventory_stock
-    from .calculator import StockCalculator
+# ── Cloud Functions HTTP shim ─────────────────────────────────────────────
 
-    # Determine how far back to sync (same window as calc)
-    calc    = StockCalculator(client)
-    last_ts = calc._last_calc_time()
+def http_handler(request):
+    """
+    Thin wrapper so this module can be deployed as a Cloud Function.
+    Converts the functions-framework Request into an ASGI call.
+    """
+    import asyncio
+    from starlette.testclient import TestClient  # only imported in CF context
 
-    ledger_sheet_id = os.getenv("SHEETS_STOCK_LEDGER_ID")
-    master_sheet_id = os.getenv("SHEETS_MASTER_ID")
+    client = TestClient(app)
+    method  = request.method
+    path    = request.path
+    headers = dict(request.headers)
+    data    = request.get_data()
 
-    if ledger_sheet_id:
-        sync_stock_ledger(client, ledger_sheet_id, since_time=last_ts)
-    else:
-        log.warning("SHEETS_STOCK_LEDGER_ID not set — skipping stock_ledger sync")
-
-    if master_sheet_id:
-        sync_inventory_stock(client, master_sheet_id)
-    else:
-        log.warning("SHEETS_MASTER_ID not set — skipping inventory_stock sync")
+    resp = client.request(method, path, headers=headers, content=data)
+    return (resp.content, resp.status_code, dict(resp.headers))
 
 
-# ── CLI entry point ───────────────────────────────────────────────────────
+# ── CLI ───────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    result = run_stock_engine()
-    print(result)
+    import uvicorn
+    port = int(os.getenv("PORT", "8080"))
+    uvicorn.run("stock_engine.main:app", host="0.0.0.0", port=port, reload=False)

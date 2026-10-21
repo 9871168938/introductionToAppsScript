@@ -1,83 +1,47 @@
 """
-BigQuery table schemas for the stock engine.
+BigQuery table schemas and DDL for the Evergreen Purchase ERP stock engine.
 
-ERP_StockCalc_Log:
-  - Partitioned by DATE(calc_time)  → BigQuery only scans today's partition for
-    dashboard queries and the latest-row view, not the entire 10 lakh+ history.
-  - Clustered by (branch_id, item_code)  → within a partition, BigQuery skips
-    blocks that don't match the branch+item filter.
+ERP_TXN_stock_ledger
+  - Partitioned by DATE(created_at)    → partition pruning on time-range queries
+  - Clustered by (branch_id, item_code) → fast per-item scans within a partition
 
-Together partitioning + clustering cut the typical query cost by 100–1000×
-compared to a flat table as data grows past 10 lakh rows.
+ERP_StockCalc (MATERIALIZED VIEW)
+  - Auto-refreshes every 5 minutes via BigQuery's built-in scheduler
+  - No Python trigger, no cron job — BigQuery handles it
+  - Dashboard/API queries always hit the pre-computed result
 """
 from google.cloud import bigquery
 
-# ── ERP_StockCalc_Log ──────────────────────────────────────────────────────
-STOCK_CALC_LOG_SCHEMA = [
-    bigquery.SchemaField("log_id",          "STRING",    mode="REQUIRED",
-                         description="UUID, one row per changed item per run"),
-    bigquery.SchemaField("branch_id",       "STRING",    mode="REQUIRED"),
-    bigquery.SchemaField("item_code",       "STRING",    mode="REQUIRED"),
-    bigquery.SchemaField("calc_time",       "TIMESTAMP", mode="REQUIRED",
-                         description="When this row was written (partition key)"),
-    bigquery.SchemaField("stock_qty",       "FLOAT64",   mode="REQUIRED",
-                         description="Net stock in INVENTORY STOCK unit"),
-    bigquery.SchemaField("stock_value",     "FLOAT64",   mode="NULLABLE",
-                         description="Value at FIFO / last purchase rate"),
-    bigquery.SchemaField("rate",            "FLOAT64",   mode="NULLABLE",
-                         description="Effective unit rate"),
-    # Component breakdown for audit / exceptions report
-    bigquery.SchemaField("opening_qty",     "FLOAT64",   mode="NULLABLE"),
-    bigquery.SchemaField("grn_in_qty",      "FLOAT64",   mode="NULLABLE"),
-    bigquery.SchemaField("issue_out_qty",   "FLOAT64",   mode="NULLABLE"),
-    bigquery.SchemaField("return_in_qty",   "FLOAT64",   mode="NULLABLE"),
-    bigquery.SchemaField("trf_in_qty",      "FLOAT64",   mode="NULLABLE"),
-    bigquery.SchemaField("trf_out_qty",     "FLOAT64",   mode="NULLABLE"),
-    bigquery.SchemaField("adj_qty",         "FLOAT64",   mode="NULLABLE"),
-    bigquery.SchemaField("movement_count",  "INT64",     mode="NULLABLE"),
-    bigquery.SchemaField("source",          "STRING",    mode="NULLABLE",
-                         description="FULL_CALC | INCREMENTAL | LEGACY_SYNC"),
-]
-
-STOCK_CALC_LOG_TABLE_OPTIONS = dict(
-    schema=STOCK_CALC_LOG_SCHEMA,
-    time_partitioning=bigquery.TimePartitioning(
-        type_=bigquery.TimePartitioningType.DAY,
-        field="calc_time",
-        expiration_ms=None,   # keep forever — it is the audit log
-    ),
-    clustering_fields=["branch_id", "item_code"],
-    labels={"app": "purchase-erp", "layer": "stock-engine"},
+# ── ERP_StockCalc — Materialized View DDL ─────────────────────────────────
+#
+# BigQuery auto-refreshes this view every refresh_interval_minutes.
+# allow_non_incremental_definition = true lets us use COALESCE and ROUND
+# which are not supported in incremental MV mode.
+#
+# Stock formula: stock = SUM(qty_in) - SUM(qty_out)
+# This works because the ledger schema separates inbound (qty_in) from
+# outbound (qty_out) quantities for every movement_type.
+STOCK_CALC_MV_DDL = """
+CREATE MATERIALIZED VIEW IF NOT EXISTS `{view_id}`
+OPTIONS (
+  enable_refresh = true,
+  refresh_interval_minutes = 5,
+  allow_non_incremental_definition = true
 )
-
-# ── ERP_StockCalc view DDL (latest row per branch+item) ───────────────────
-STOCK_CALC_VIEW_DDL = """
-CREATE OR REPLACE VIEW `{view_id}` AS
+AS
 SELECT
   branch_id,
   item_code,
-  stock_qty,
-  stock_value,
-  rate,
-  opening_qty,
-  grn_in_qty,
-  issue_out_qty,
-  return_in_qty,
-  trf_in_qty,
-  trf_out_qty,
-  adj_qty,
-  movement_count,
-  source,
-  calc_time
-FROM (
-  SELECT *,
-    ROW_NUMBER() OVER (
-      PARTITION BY branch_id, item_code
-      ORDER BY calc_time DESC
-    ) AS rn
-  FROM `{log_id}`
-)
-WHERE rn = 1
+  ROUND(
+    SUM(COALESCE(qty_in, 0) - COALESCE(qty_out, 0)),
+    6
+  )                          AS stock_qty,
+  ROUND(SUM(COALESCE(value, 0)), 2) AS stock_value,
+  MAX(created_at)            AS last_movement_at,
+  COUNT(*)                   AS movement_count
+FROM `{ledger_id}`
+WHERE is_reversal IS NULL OR is_reversal = FALSE
+GROUP BY branch_id, item_code
 """
 
 # ── ERP_TXN_stock_ledger (synced from Google Sheets) ─────────────────────
