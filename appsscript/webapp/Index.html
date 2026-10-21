@@ -1,0 +1,759 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
+  <title>Evergreen ERP — Stock</title>
+  <script src="https://cdn.tailwindcss.com/3.4.1"></script>
+  <style>
+    :root {
+      --primary:      #1e40af;
+      --primary-dark: #1e3a8a;
+      --primary-light:#dbeafe;
+      --success:      #16a34a;
+      --warning:      #d97706;
+      --danger:       #dc2626;
+      --bg:           #f8fafc;
+      --surface:      #ffffff;
+      --border:       #e2e8f0;
+      --text:         #1e293b;
+      --muted:        #64748b;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        --primary:      #3b82f6;
+        --primary-dark: #2563eb;
+        --primary-light:#1e3a8a;
+        --success:      #22c55e;
+        --warning:      #f59e0b;
+        --danger:       #f87171;
+        --bg:           #0f172a;
+        --surface:      #1e293b;
+        --border:       #334155;
+        --text:         #f1f5f9;
+        --muted:        #94a3b8;
+      }
+    }
+    :root[data-theme="dark"] {
+      --primary:      #3b82f6;
+      --primary-dark: #2563eb;
+      --primary-light:#1e3a8a;
+      --success:      #22c55e;
+      --warning:      #f59e0b;
+      --danger:       #f87171;
+      --bg:           #0f172a;
+      --surface:      #1e293b;
+      --border:       #334155;
+      --text:         #f1f5f9;
+      --muted:        #94a3b8;
+    }
+
+    body { background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, sans-serif; }
+
+    /* Nav tabs */
+    .nav-tab {
+      padding: 0.4rem 0.9rem; border-radius: 0.4rem; font-size: 0.85rem;
+      font-weight: 500; color: rgba(255,255,255,0.75); transition: background 0.15s;
+    }
+    .nav-tab:hover  { background: rgba(255,255,255,0.12); color: white; }
+    .nav-tab.active { background: rgba(255,255,255,0.2); color: white; }
+
+    /* Bottom tabs */
+    .btab { flex: 1; display: flex; flex-direction: column; align-items: center;
+            gap: 2px; padding: 0.6rem 0; font-size: 0.68rem; font-weight: 500;
+            color: var(--muted); transition: color 0.15s; border: none;
+            background: var(--surface); cursor: pointer; }
+    .btab.active { color: var(--primary); }
+    .btab svg { width: 22px; height: 22px; }
+
+    /* Card / surface */
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 0.75rem; }
+
+    /* Stat tile */
+    .stat-num { font-size: 1.6rem; font-weight: 700; line-height: 1; }
+
+    /* Table */
+    .data-table { width: 100%; border-collapse: collapse; }
+    .data-table thead tr { background: var(--bg); border-bottom: 2px solid var(--border); }
+    .data-table th { padding: 0.6rem 1rem; text-align: left; font-size: 0.72rem;
+                     font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
+                     color: var(--muted); white-space: nowrap; }
+    .data-table td { padding: 0.65rem 1rem; font-size: 0.85rem; border-bottom: 1px solid var(--border); }
+    .data-table tbody tr:hover { background: var(--bg); }
+    .data-table tbody tr:last-child td { border-bottom: none; }
+
+    /* Responsive: table → cards on mobile */
+    @media (max-width: 767px) {
+      .responsive-table thead { display: none; }
+      .responsive-table, .responsive-table tbody,
+      .responsive-table tr, .responsive-table td { display: block; width: 100%; }
+      .responsive-table tr {
+        margin-bottom: 0.75rem;
+        border: 1px solid var(--border); border-radius: 0.6rem;
+        overflow: hidden; background: var(--surface);
+      }
+      .responsive-table td {
+        display: flex; justify-content: space-between; align-items: center;
+        padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--border);
+        font-size: 0.82rem;
+      }
+      .responsive-table td:last-child { border-bottom: none; }
+      .responsive-table td::before {
+        content: attr(data-label);
+        font-weight: 600; font-size: 0.72rem;
+        color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em;
+        margin-right: 0.5rem; white-space: nowrap;
+      }
+    }
+
+    /* Badge */
+    .badge { display: inline-block; font-size: 0.65rem; font-weight: 700;
+             padding: 0.1rem 0.4rem; border-radius: 9999px; }
+    .badge-red  { background: #fee2e2; color: #991b1b; }
+    .badge-grn  { background: #dcfce7; color: #166534; }
+    .badge-ylw  { background: #fef3c7; color: #92400e; }
+    .badge-blu  { background: #dbeafe; color: #1e40af; }
+
+    /* Movement type pill */
+    .mt-pill { display: inline-block; font-size: 0.7rem; font-weight: 600;
+               padding: 0.15rem 0.5rem; border-radius: 9999px; }
+
+    /* Input */
+    .inp { width: 100%; border: 1px solid var(--border); border-radius: 0.5rem;
+           padding: 0.5rem 0.75rem; font-size: 0.875rem; background: var(--surface);
+           color: var(--text); transition: border-color 0.15s, box-shadow 0.15s; }
+    .inp:focus { outline: none; border-color: var(--primary);
+                 box-shadow: 0 0 0 3px rgba(59,130,246,0.15); }
+
+    /* Button */
+    .btn-primary { background: var(--primary); color: white; border: none; border-radius: 0.5rem;
+                   padding: 0.55rem 1.2rem; font-size: 0.875rem; font-weight: 600;
+                   cursor: pointer; transition: background 0.15s; }
+    .btn-primary:hover { background: var(--primary-dark); }
+    .btn-primary:disabled { opacity: 0.55; cursor: not-allowed; }
+    .btn-ghost  { background: transparent; border: 1px solid var(--border); border-radius: 0.5rem;
+                  padding: 0.5rem 1rem; font-size: 0.875rem; color: var(--text);
+                  cursor: pointer; transition: background 0.15s; }
+    .btn-ghost:hover { background: var(--bg); }
+
+    /* Toast */
+    #toast { position: fixed; top: 4.5rem; right: 1rem; z-index: 9999;
+             max-width: 22rem; padding: 0.8rem 1.1rem; border-radius: 0.6rem;
+             font-size: 0.85rem; font-weight: 500; color: white;
+             box-shadow: 0 4px 16px rgba(0,0,0,0.18); transform: translateX(110%);
+             transition: transform 0.25s ease; }
+    #toast.show { transform: translateX(0); }
+
+    /* Spinner */
+    .spin { width: 1.1rem; height: 1.1rem; border: 2px solid rgba(255,255,255,0.4);
+            border-top-color: white; border-radius: 50%; animation: spin 0.6s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Label */
+    .lbl { display: block; font-size: 0.8rem; font-weight: 600; color: var(--muted);
+           margin-bottom: 0.3rem; text-transform: uppercase; letter-spacing: 0.03em; }
+
+    /* View */
+    .view { display: none; }
+    .view.active { display: block; }
+
+    /* Stock qty colours */
+    .qty-pos { color: var(--success); font-weight: 600; }
+    .qty-neg { color: var(--danger);  font-weight: 700; }
+    .qty-zer { color: var(--muted); }
+  </style>
+</head>
+
+<body>
+
+<!-- ── Top bar ──────────────────────────────────────────────────────────── -->
+<header style="background:var(--primary); position:sticky; top:0; z-index:50;"
+        class="shadow-md">
+  <div class="flex items-center justify-between px-4" style="height:3.25rem;">
+
+    <div class="flex items-center gap-2.5">
+      <svg style="width:22px;height:22px;color:white;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 10V11"/>
+      </svg>
+      <span class="font-bold text-white text-base">Evergreen ERP</span>
+      <span class="hidden sm:inline text-sm" style="color:rgba(255,255,255,0.6)">/ Stock</span>
+    </div>
+
+    <!-- Desktop nav -->
+    <nav class="hidden lg:flex items-center gap-1">
+      <button class="nav-tab active" data-view="stock"       onclick="showView('stock')">📊 Stock</button>
+      <button class="nav-tab"        data-view="add"         onclick="showView('add')">➕ Add Txn</button>
+      <button class="nav-tab"        data-view="ledger"      onclick="showView('ledger')">📋 Ledger</button>
+      <button class="nav-tab"        data-view="exceptions"  onclick="showView('exceptions')">
+        ⚠️ Exceptions
+        <span id="excBadge" class="hidden ml-1 bg-red-500 text-white text-xs rounded-full px-1.5">0</span>
+      </button>
+    </nav>
+
+    <div class="flex items-center gap-2">
+      <div id="spinnerTop" class="spin hidden"></div>
+      <span id="userLabel" class="hidden sm:inline text-xs" style="color:rgba(255,255,255,0.6);"></span>
+    </div>
+  </div>
+</header>
+
+<!-- ── App body ──────────────────────────────────────────────────────────── -->
+<div class="pb-20 lg:pb-0" style="min-height:calc(100vh - 3.25rem);">
+
+  <!-- ── STOCK VIEW ───────────────────────────────────────────────────── -->
+  <div id="view-stock" class="view active p-4 max-w-7xl mx-auto">
+
+    <!-- Stats row -->
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+      <div class="card p-4">
+        <div class="stat-num" style="color:var(--primary);" id="statTotal">—</div>
+        <div class="text-xs mt-1" style="color:var(--muted);">Total Items</div>
+      </div>
+      <div class="card p-4">
+        <div class="stat-num" style="color:var(--success);" id="statValue">—</div>
+        <div class="text-xs mt-1" style="color:var(--muted);">Stock Value</div>
+      </div>
+      <div class="card p-4">
+        <div class="stat-num" style="color:var(--danger);" id="statNeg">—</div>
+        <div class="text-xs mt-1" style="color:var(--muted);">Negative Stock</div>
+      </div>
+      <div class="card p-4">
+        <div class="stat-num" style="color:var(--muted);" id="statBranch">—</div>
+        <div class="text-xs mt-1" style="color:var(--muted);">Branches</div>
+      </div>
+    </div>
+
+    <!-- Search bar -->
+    <div class="card p-3 mb-4">
+      <div class="flex flex-col sm:flex-row gap-2">
+        <input id="fBranch" class="inp flex-1" placeholder="Branch ID (e.g. BR01)" />
+        <input id="fItem"   class="inp flex-1" placeholder="Item Code (e.g. STEEL-6MM)" />
+        <button class="btn-primary whitespace-nowrap" onclick="loadStock()">Search</button>
+        <button class="btn-ghost   whitespace-nowrap" onclick="loadStock(true)">All Stock</button>
+      </div>
+    </div>
+
+    <!-- Stock table -->
+    <div class="card overflow-hidden">
+      <div id="stockBody">
+        <div class="p-10 text-center" style="color:var(--muted);">
+          <div style="font-size:2.5rem;margin-bottom:0.5rem;">🔍</div>
+          <div class="text-sm">Enter a Branch ID or Item Code and press <strong>Search</strong>,<br>or press <strong>All Stock</strong> to load everything.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── ADD TRANSACTION VIEW ─────────────────────────────────────────── -->
+  <div id="view-add" class="view p-4">
+    <div class="max-w-xl mx-auto">
+      <h2 class="text-base font-bold mb-4" style="color:var(--text);">Record Stock Movement</h2>
+
+      <form id="txnForm" onsubmit="submitTxn(event)" class="card p-5 space-y-4">
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="lbl">Branch ID *</label>
+            <input name="branch_id" required class="inp" placeholder="BR01" />
+          </div>
+          <div>
+            <label class="lbl">Item Code *</label>
+            <input name="item_code" required class="inp" placeholder="STEEL-6MM" />
+          </div>
+        </div>
+
+        <div>
+          <label class="lbl">Movement Type *</label>
+          <select name="movement_type" required class="inp">
+            <option value="">— Select —</option>
+            <optgroup label="── IN movements (increase stock)">
+              <option value="GRN_IN">GRN_IN — Goods Received (QC accepted)</option>
+              <option value="RETURN_IN">RETURN_IN — Returned from department</option>
+              <option value="TRF_IN">TRF_IN — Transfer received from another branch</option>
+              <option value="CHALLAN_IN">CHALLAN_IN — Inward challan return</option>
+              <option value="ADJ_PLUS">ADJ_PLUS — Approved stock increase</option>
+              <option value="OPENING">OPENING — Opening balance entry</option>
+            </optgroup>
+            <optgroup label="── OUT movements (decrease stock)">
+              <option value="ISSUE_OUT">ISSUE_OUT — Issued to production / department</option>
+              <option value="RETURN_OUT">RETURN_OUT — Return to vendor</option>
+              <option value="TRF_OUT">TRF_OUT — Transfer sent to another branch</option>
+              <option value="CHALLAN_OUT">CHALLAN_OUT — Outward challan</option>
+              <option value="ADJ_MINUS">ADJ_MINUS — Approved stock decrease</option>
+            </optgroup>
+          </select>
+        </div>
+
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="lbl">Quantity *</label>
+            <input name="qty" required type="number" min="0.001" step="0.001" class="inp"
+                   placeholder="0.000" oninput="autoCalcValue()" />
+          </div>
+          <div>
+            <label class="lbl">Rate (₹/unit)</label>
+            <input name="rate" type="number" min="0" step="0.01" class="inp"
+                   placeholder="0.00" oninput="autoCalcValue()" />
+          </div>
+        </div>
+
+        <div>
+          <label class="lbl">Total Value (₹) <span id="valueHint" class="text-xs font-normal normal-case ml-1" style="color:var(--muted);"></span></label>
+          <input name="value" type="number" min="0" step="0.01" class="inp" placeholder="Auto-calculated or enter manually" />
+        </div>
+
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="lbl">Doc Reference</label>
+            <input name="doc_id" class="inp" placeholder="GRN-001, PO-12 …" />
+          </div>
+          <div>
+            <label class="lbl">Line #</label>
+            <input name="line_id" class="inp" placeholder="1, 2, A …" />
+          </div>
+        </div>
+
+        <div>
+          <label class="lbl">Notes</label>
+          <textarea name="notes" rows="2" class="inp resize-none" placeholder="Optional remarks"></textarea>
+        </div>
+
+        <div id="txnMsg" class="hidden rounded-lg p-3 text-sm font-medium"></div>
+
+        <div class="flex gap-3 pt-1">
+          <button id="txnSubmit" type="submit" class="btn-primary flex-1">Save Movement</button>
+          <button type="button" onclick="resetTxnForm()" class="btn-ghost px-5">Clear</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ── LEDGER VIEW ──────────────────────────────────────────────────── -->
+  <div id="view-ledger" class="view p-4 max-w-7xl mx-auto">
+    <div class="flex flex-col sm:flex-row gap-2 mb-4">
+      <input id="lBranch" class="inp flex-1" placeholder="Branch ID" />
+      <input id="lItem"   class="inp flex-1" placeholder="Item Code" />
+      <button class="btn-primary" onclick="loadLedger()">Load History</button>
+    </div>
+    <div class="card overflow-hidden">
+      <div id="ledgerBody">
+        <div class="p-10 text-center text-sm" style="color:var(--muted);">Enter Branch ID or Item Code and press Load History.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── EXCEPTIONS VIEW ──────────────────────────────────────────────── -->
+  <div id="view-exceptions" class="view p-4 max-w-7xl mx-auto">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="font-bold" style="color:var(--text);">Stock Exceptions</h2>
+      <button class="btn-ghost text-sm" onclick="loadExceptions()">↻ Refresh</button>
+    </div>
+    <div class="card overflow-hidden">
+      <div id="excBody">
+        <div class="p-10 text-center text-sm" style="color:var(--muted);">Loading…</div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- end app body -->
+
+<!-- ── Bottom nav (mobile only) ─────────────────────────────────────────── -->
+<nav class="lg:hidden fixed bottom-0 left-0 right-0 border-t z-50 flex"
+     style="background:var(--surface); border-color:var(--border);">
+  <button class="btab active" data-view="stock"      onclick="showView('stock')">
+    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+    </svg>
+    Stock
+  </button>
+  <button class="btab" data-view="add" onclick="showView('add')">
+    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+    </svg>
+    Add Txn
+  </button>
+  <button class="btab" data-view="ledger" onclick="showView('ledger')">
+    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+    </svg>
+    Ledger
+  </button>
+  <button class="btab" data-view="exceptions" onclick="showView('exceptions')">
+    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+    </svg>
+    Exceptions
+    <span id="excBadgeMob" class="hidden absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center"></span>
+  </button>
+</nav>
+
+<!-- ── Toast ─────────────────────────────────────────────────────────────── -->
+<div id="toast"></div>
+
+<script>
+// ── Demo data (used when not inside Apps Script) ─────────────────────────
+const IS_GAS = typeof google !== 'undefined' && google.script;
+
+const DEMO = {
+  getStock(b, i) {
+    const all = [
+      { branch_id:'BR01', item_code:'STEEL-6MM',   stock_qty: 1250.500, stock_value: 187575.00, last_movement_at:'2026-10-20T10:30:00Z', movement_count:45 },
+      { branch_id:'BR01', item_code:'CEMENT-OPC',  stock_qty:  -12.000, stock_value:  -3600.00, last_movement_at:'2026-10-19T08:00:00Z', movement_count:23 },
+      { branch_id:'BR01', item_code:'PAINT-INT',   stock_qty:    0.000, stock_value:      0.00, last_movement_at:'2026-07-01T12:00:00Z', movement_count: 5 },
+      { branch_id:'BR02', item_code:'STEEL-8MM',   stock_qty:  800.000, stock_value: 144000.00, last_movement_at:'2026-10-21T07:00:00Z', movement_count:30 },
+      { branch_id:'BR02', item_code:'BOLT-M12',    stock_qty: 5000.000, stock_value:  25000.00, last_movement_at:'2026-10-18T14:00:00Z', movement_count:12 },
+      { branch_id:'BR03', item_code:'STEEL-6MM',   stock_qty:  320.000, stock_value:  48000.00, last_movement_at:'2026-10-20T16:00:00Z', movement_count:18 },
+    ];
+    const rows = all.filter(r =>
+      (!b || r.branch_id.toUpperCase().includes(b.toUpperCase())) &&
+      (!i || r.item_code.toUpperCase().includes(i.toUpperCase()))
+    );
+    return { rows, count: rows.length };
+  },
+  postTransaction(p) {
+    return { ledger_id: 'demo-' + Math.random().toString(36).slice(2,10), status:'ok' };
+  },
+  getLedger(b, i) {
+    const rows = [
+      { created_at:'2026-10-21T07:00:00Z', branch_id:'BR02', item_code:'STEEL-8MM', movement_type:'GRN_IN',    qty_in:200, qty_out:null, value:36000, doc_id:'GRN-044' },
+      { created_at:'2026-10-20T10:30:00Z', branch_id:'BR01', item_code:'STEEL-6MM', movement_type:'GRN_IN',    qty_in:500, qty_out:null, value:75000, doc_id:'GRN-043' },
+      { created_at:'2026-10-19T14:00:00Z', branch_id:'BR01', item_code:'STEEL-6MM', movement_type:'ISSUE_OUT', qty_in:null,qty_out:50,   value: 7500, doc_id:'MR-109'  },
+      { created_at:'2026-10-19T08:00:00Z', branch_id:'BR01', item_code:'CEMENT-OPC',movement_type:'ISSUE_OUT', qty_in:null,qty_out:62,   value:18600, doc_id:'MR-108'  },
+    ].filter(r =>
+      (!b || r.branch_id.includes(b)) && (!i || r.item_code.includes(i))
+    );
+    return { rows, count: rows.length };
+  },
+  getExceptions() {
+    return { exceptions:[
+      { branch_id:'BR01', item_code:'CEMENT-OPC', stock_qty:-12,   stock_value:-3600,  last_movement_at:'2026-10-19T08:00:00Z', exception_type:'NEGATIVE_STOCK' },
+      { branch_id:'BR01', item_code:'PAINT-INT',  stock_qty:  0,   stock_value:    0,  last_movement_at:'2026-07-01T12:00:00Z', exception_type:'NO_MOVEMENTS'   },
+    ], count:2 };
+  },
+};
+
+// ── API wrapper ────────────────────────────────────────────────────────────
+function callApi(fn, ...args) {
+  return new Promise((resolve, reject) => {
+    if (!IS_GAS) {
+      setTimeout(() => resolve(DEMO[fn]?.(...args) ?? { rows:[], count:0, exceptions:[] }), 350);
+    } else {
+      google.script.run
+        .withSuccessHandler(r => resolve(r))
+        .withFailureHandler(e  => reject(e))
+        [fn](...args);
+    }
+  });
+}
+
+// ── Navigation ─────────────────────────────────────────────────────────────
+let _activeView = 'stock';
+
+function showView(name) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.getElementById('view-' + name).classList.add('active');
+
+  document.querySelectorAll('.nav-tab').forEach(t => {
+    t.classList.toggle('active', t.dataset.view === name);
+  });
+  document.querySelectorAll('.btab').forEach(t => {
+    t.classList.toggle('active', t.dataset.view === name);
+  });
+
+  _activeView = name;
+  if (name === 'exceptions') loadExceptions();
+  window.scrollTo(0, 0);
+}
+
+// ── Formatting ─────────────────────────────────────────────────────────────
+function fmtQty(n)  { return (parseFloat(n)||0).toLocaleString('en-IN',{minimumFractionDigits:3,maximumFractionDigits:3}); }
+function fmtVal(n)  { return '₹'+(parseFloat(n)||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function fmtValL(n) { const v=Math.abs(parseFloat(n)||0); return v>=1e5?'₹'+(v/1e5).toFixed(2)+'L':'₹'+v.toLocaleString('en-IN',{maximumFractionDigits:0}); }
+function fmtDate(ts){ if(!ts)return '—'; try{const d=new Date(ts);return d.toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'2-digit'});}catch{return ts;} }
+function escHtml(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function qtyClass(n){ const v=parseFloat(n)||0; return v<0?'qty-neg':v===0?'qty-zer':'qty-pos'; }
+
+const MT_PILL = {
+  GRN_IN:'badge-grn', RETURN_IN:'badge-grn', TRF_IN:'badge-grn', CHALLAN_IN:'badge-grn', ADJ_PLUS:'badge-grn', OPENING:'badge-blu',
+  ISSUE_OUT:'badge-red', RETURN_OUT:'badge-red', TRF_OUT:'badge-red', CHALLAN_OUT:'badge-ylw', ADJ_MINUS:'badge-red',
+};
+
+// ── Spinner / toast ─────────────────────────────────────────────────────────
+let _spinCount = 0;
+function spin(on){ _spinCount=Math.max(0,_spinCount+(on?1:-1)); document.getElementById('spinnerTop').classList.toggle('hidden',_spinCount===0); }
+
+let _toastTimer;
+function toast(msg, type='ok'){
+  const el=document.getElementById('toast');
+  el.textContent=msg;
+  el.style.background=type==='ok'?'#16a34a':'#dc2626';
+  el.classList.add('show');
+  clearTimeout(_toastTimer);
+  _toastTimer=setTimeout(()=>el.classList.remove('show'),3500);
+}
+
+// ── Stock view ──────────────────────────────────────────────────────────────
+async function loadStock(all=false){
+  const b = all ? '' : document.getElementById('fBranch').value.trim();
+  const i = all ? '' : document.getElementById('fItem').value.trim();
+  if (!all && !b && !i){ toast('Enter a Branch ID or Item Code','err'); return; }
+
+  spin(true);
+  try {
+    const data = await callApi('getStock', b, i);
+    renderStock(data);
+  } catch(e){ toast('Error: '+(e.message||e),'err'); }
+  finally   { spin(false); }
+}
+
+function renderStock(data){
+  const rows = data.rows || [];
+
+  // Stats
+  document.getElementById('statTotal').textContent  = rows.length.toLocaleString('en-IN');
+  const totV = rows.reduce((s,r)=>s+(parseFloat(r.stock_value)||0),0);
+  document.getElementById('statValue').textContent  = fmtValL(totV);
+  const neg  = rows.filter(r=>(parseFloat(r.stock_qty)||0)<0).length;
+  document.getElementById('statNeg').textContent    = neg;
+  const brs  = new Set(rows.map(r=>r.branch_id)).size;
+  document.getElementById('statBranch').textContent = brs;
+
+  const el = document.getElementById('stockBody');
+  if (!rows.length){ el.innerHTML='<div class="p-10 text-center text-sm" style="color:var(--muted);">No records found.</div>'; return; }
+
+  const trs = rows.map(r=>`
+    <tr>
+      <td data-label="Branch">${escHtml(r.branch_id)}</td>
+      <td data-label="Item Code" style="font-weight:600">${escHtml(r.item_code)}</td>
+      <td data-label="Stock Qty" class="${qtyClass(r.stock_qty)}">${fmtQty(r.stock_qty)}</td>
+      <td data-label="Value" style="color:var(--muted)">${fmtVal(r.stock_value)}</td>
+      <td data-label="Last Moved" style="color:var(--muted);font-size:0.78rem">${fmtDate(r.last_movement_at)}</td>
+      <td data-label="Actions" style="text-align:right">
+        <button onclick="prefillAdd('${escHtml(r.branch_id)}','${escHtml(r.item_code)}')"
+                style="font-size:0.75rem;color:var(--primary);background:none;border:none;cursor:pointer;text-decoration:underline;">
+          + Add
+        </button>
+      </td>
+    </tr>`).join('');
+
+  el.innerHTML = `
+    <div class="overflow-x-auto">
+      <table class="data-table responsive-table">
+        <thead><tr>
+          <th>Branch</th><th>Item Code</th><th>Stock Qty</th>
+          <th>Value</th><th>Last Moved</th><th></th>
+        </tr></thead>
+        <tbody>${trs}</tbody>
+      </table>
+    </div>
+    <div class="px-4 py-2 text-xs text-right" style="color:var(--muted);border-top:1px solid var(--border)">
+      ${rows.length.toLocaleString('en-IN')} items · live from BigQuery
+    </div>`;
+}
+
+function prefillAdd(branch, item){
+  showView('add');
+  document.querySelector('[name=branch_id]').value = branch;
+  document.querySelector('[name=item_code]').value  = item;
+  document.querySelector('[name=movement_type]').focus();
+}
+
+// ── Add Transaction ─────────────────────────────────────────────────────────
+function autoCalcValue(){
+  const qty  = parseFloat(document.querySelector('[name=qty]')?.value)  || 0;
+  const rate = parseFloat(document.querySelector('[name=rate]')?.value) || 0;
+  const hint = document.getElementById('valueHint');
+  if (qty && rate){
+    const v = qty * rate;
+    document.querySelector('[name=value]').value = v.toFixed(2);
+    hint.textContent = '= ' + fmtQty(qty) + ' × ₹' + rate.toFixed(2);
+  } else {
+    hint.textContent = '';
+  }
+}
+
+function resetTxnForm(){
+  document.getElementById('txnForm').reset();
+  document.getElementById('valueHint').textContent='';
+  const m=document.getElementById('txnMsg');
+  m.classList.add('hidden'); m.textContent='';
+}
+
+async function submitTxn(e){
+  e.preventDefault();
+  const form = e.target;
+  const fd   = new FormData(form);
+  const d    = Object.fromEntries(fd);
+
+  if (!d.value && d.qty && d.rate)
+    d.value = parseFloat(d.qty) * parseFloat(d.rate);
+
+  const payload = {
+    branch_id:     d.branch_id.trim(),
+    item_code:     d.item_code.trim(),
+    movement_type: d.movement_type,
+    qty:           parseFloat(d.qty),
+    value:         parseFloat(d.value) || 0,
+    rate:          d.rate ? parseFloat(d.rate) : null,
+    doc_id:        d.doc_id  || '',
+    line_id:       d.line_id || '',
+    notes:         d.notes   || '',
+  };
+
+  const btn = document.getElementById('txnSubmit');
+  btn.disabled = true; btn.textContent = 'Saving…';
+
+  const msg = document.getElementById('txnMsg');
+  msg.className = 'hidden rounded-lg p-3 text-sm font-medium';
+
+  spin(true);
+  try {
+    const res = await callApi('postTransaction', payload);
+    if (res.error) throw new Error(res.message);
+
+    msg.className = 'rounded-lg p-3 text-sm font-medium';
+    msg.style.background='#dcfce7'; msg.style.color='#166534';
+    msg.textContent = '✓ Saved — Ledger ID: ' + (res.ledger_id||'').slice(0,12) + '…';
+
+    // Keep branch+item, clear other fields
+    const brSave=payload.branch_id, itSave=payload.item_code;
+    form.reset();
+    document.querySelector('[name=branch_id]').value = brSave;
+    document.querySelector('[name=item_code]').value  = itSave;
+    document.getElementById('valueHint').textContent='';
+
+    toast('Movement saved', 'ok');
+  } catch(ex){
+    msg.className='rounded-lg p-3 text-sm font-medium';
+    msg.style.background='#fee2e2'; msg.style.color='#991b1b';
+    msg.textContent = '✗ ' + (ex.message || ex);
+    toast('Error saving movement', 'err');
+  } finally {
+    spin(false);
+    btn.disabled=false; btn.textContent='Save Movement';
+  }
+}
+
+// ── Ledger view ─────────────────────────────────────────────────────────────
+async function loadLedger(){
+  const b=document.getElementById('lBranch').value.trim();
+  const i=document.getElementById('lItem').value.trim();
+  spin(true);
+  try {
+    const data = await callApi('getLedger', b, i);
+    renderLedger(data);
+  } catch(e){ toast('Error: '+(e.message||e),'err'); }
+  finally   { spin(false); }
+}
+
+function renderLedger(data){
+  const rows = data.rows || [];
+  const el   = document.getElementById('ledgerBody');
+  if (!rows.length){ el.innerHTML='<div class="p-10 text-center text-sm" style="color:var(--muted);">No entries found.</div>'; return; }
+
+  const trs = rows.map(r=>{
+    const isIn = r.qty_in != null;
+    const qty  = isIn ? r.qty_in : r.qty_out;
+    const sign = isIn ? '+' : '−';
+    const cls  = isIn ? 'qty-pos' : 'qty-neg';
+    const pill = MT_PILL[r.movement_type] || '';
+    return `<tr>
+      <td data-label="Date" style="color:var(--muted);font-size:0.78rem">${fmtDate(r.created_at)}</td>
+      <td data-label="Branch">${escHtml(r.branch_id)}</td>
+      <td data-label="Item"   style="font-weight:600">${escHtml(r.item_code)}</td>
+      <td data-label="Type"><span class="badge mt-pill ${pill}">${r.movement_type}</span></td>
+      <td data-label="Qty" class="${cls}">${sign}${fmtQty(qty)}</td>
+      <td data-label="Value" style="color:var(--muted)">${fmtVal(r.value)}</td>
+      <td data-label="Doc" style="color:var(--muted);font-size:0.78rem">${escHtml(r.doc_id||'—')}</td>
+    </tr>`;
+  }).join('');
+
+  el.innerHTML=`
+    <div class="overflow-x-auto">
+      <table class="data-table responsive-table">
+        <thead><tr>
+          <th>Date</th><th>Branch</th><th>Item</th>
+          <th>Type</th><th>Qty</th><th>Value</th><th>Doc</th>
+        </tr></thead>
+        <tbody>${trs}</tbody>
+      </table>
+    </div>
+    <div class="px-4 py-2 text-xs text-right" style="color:var(--muted);border-top:1px solid var(--border)">${rows.length} entries</div>`;
+}
+
+// ── Exceptions view ─────────────────────────────────────────────────────────
+async function loadExceptions(){
+  spin(true);
+  try {
+    const data = await callApi('getExceptions');
+    renderExceptions(data);
+    // Update badges
+    const n = (data.exceptions||[]).length;
+    ['excBadge','excBadgeMob'].forEach(id=>{
+      const el=document.getElementById(id);
+      if(!el)return;
+      if(n>0){ el.textContent=n; el.classList.remove('hidden'); }
+      else   { el.classList.add('hidden'); }
+    });
+  } catch(e){ toast('Error: '+(e.message||e),'err'); }
+  finally   { spin(false); }
+}
+
+function renderExceptions(data){
+  const excs = data.exceptions || [];
+  const el   = document.getElementById('excBody');
+  if (!excs.length){
+    el.innerHTML=`<div class="p-10 text-center" style="color:var(--success);">
+      <div style="font-size:2.5rem;">✅</div>
+      <div class="font-semibold mt-2">No exceptions — all stock is positive</div>
+    </div>`;
+    return;
+  }
+
+  const cards = excs.map(r=>{
+    const isNeg = r.exception_type==='NEGATIVE_STOCK';
+    const bg    = isNeg?'#fef2f2':'#fffbeb';
+    const bdr   = isNeg?'#fecaca':'#fde68a';
+    const badgeCls = isNeg?'badge-red':'badge-ylw';
+    return `
+    <div style="background:${bg};border:1px solid ${bdr};border-radius:0.7rem;padding:1rem;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+        <div>
+          <div style="font-weight:700;font-size:0.9rem;">${escHtml(r.item_code)}</div>
+          <div style="font-size:0.78rem;color:var(--muted);">${escHtml(r.branch_id)}</div>
+        </div>
+        <span class="badge ${badgeCls}">${r.exception_type.replace('_',' ')}</span>
+      </div>
+      <div style="margin-top:0.6rem;display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;font-size:0.82rem;">
+        <div><span style="color:var(--muted);">Stock: </span>
+             <strong class="${qtyClass(r.stock_qty)}">${fmtQty(r.stock_qty)}</strong></div>
+        <div><span style="color:var(--muted);">Value: </span>${fmtVal(r.stock_value)}</div>
+      </div>
+      <div style="margin-top:0.4rem;font-size:0.73rem;color:var(--muted);">Last moved: ${fmtDate(r.last_movement_at)}</div>
+      <button onclick="prefillAdd('${escHtml(r.branch_id)}','${escHtml(r.item_code)}')"
+              style="margin-top:0.6rem;font-size:0.78rem;color:var(--primary);background:none;border:none;cursor:pointer;text-decoration:underline;">
+        Record adjustment →
+      </button>
+    </div>`;
+  }).join('');
+
+  el.innerHTML=`<div style="padding:1rem;display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:1rem;">${cards}</div>`;
+}
+
+// ── Init ────────────────────────────────────────────────────────────────────
+if (IS_GAS){
+  google.script.run
+    .withSuccessHandler(e=>{ if(e){ const el=document.getElementById('userLabel'); if(el){ el.textContent=e; el.classList.remove('hidden'); } } })
+    .getCurrentUserEmail();
+}
+
+// Pre-load exception badge
+loadExceptions();
+</script>
+</body>
+</html>
